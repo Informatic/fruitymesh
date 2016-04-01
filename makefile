@@ -3,17 +3,17 @@
 #
 # Selectable build options 
 #------------------------------------------------------------------------------
-TARGET_BOARD         ?= BOARD_PCA10031
+TARGET_BOARD         ?= BOARD_PCA10036
 
 #------------------------------------------------------------------------------
 # Define relative paths to SDK components
 #------------------------------------------------------------------------------
 
-SDK_BASE      := $(HOME)/nrf/sdk/nrf_sdk_9_0
+SDK_BASE      := $(HOME)/nrf/sdk/nrf52_sdk_0_9_2
 COMPONENTS    := $(SDK_BASE)/components
 TEMPLATE_PATH := $(COMPONENTS)/toolchain/gcc
 EHAL_PATH     := $(HOME)/nrf/sdk/ehal_latest
-LINKER_SCRIPT := ./linker/gcc_nrf51_s130_32kb.ld
+LINKER_SCRIPT := ./linker/gcc_nrf52_s132_xxaa.ld
 OUTPUT_NAME   := FruityMesh
 JLINK	      := jlinkexe
 
@@ -21,7 +21,7 @@ OS := $(shell uname -s)
 ifeq ($(OS),Darwin)
   JLINK 	:= jlinkexe
 else
-  JLINK		:= jlink
+  JLINK		:= /opt/SEGGER/JLink/JLinkExe
 endif
 
 
@@ -96,11 +96,11 @@ CPP_SOURCE_FILES += ./src/utility/Storage.cpp
 CPP_SOURCE_FILES += ./src/utility/Terminal.cpp
 CPP_SOURCE_FILES += ./src/utility/Utility.cpp
 
-C_SOURCE_FILES += $(EHAL_PATH)/ARM/Nordic/nRF51/src/Vectors_nRF51.c
+C_SOURCE_FILES += $(EHAL_PATH)/ARM/Nordic/nRF52/src/Vectors_nRF52.c
 C_SOURCE_FILES += $(COMPONENTS)/libraries/timer/app_timer.c
 C_SOURCE_FILES += $(COMPONENTS)/ble/ble_radio_notification/ble_radio_notification.c
 C_SOURCE_FILES += ./src/nrf/simple_uart.c
-C_SOURCE_FILES += $(COMPONENTS)/drivers_nrf/hal/nrf_delay.c
+# C_SOURCE_FILES += $(COMPONENTS)/drivers_nrf/nrf_delay.c
 C_SOURCE_FILES += $(COMPONENTS)/drivers_nrf/pstorage/pstorage.c
 C_SOURCE_FILES += $(COMPONENTS)/softdevice/common/softdevice_handler/softdevice_handler.c
 
@@ -113,7 +113,7 @@ INC_PATHS += -I./config
 
 #arm GCC
 
-#nordic nrf51
+#nordic nrf52
 INC_PATHS += -I$(COMPONENTS)/ble/ble_radio_notification
 INC_PATHS += -I$(COMPONENTS)/ble/ble_services/ble_dfu
 INC_PATHS += -I$(COMPONENTS)/ble/common
@@ -121,12 +121,15 @@ INC_PATHS += -I$(COMPONENTS)/device
 INC_PATHS += -I$(COMPONENTS)/libraries/timer
 INC_PATHS += -I$(COMPONENTS)/libraries/util
 INC_PATHS += -I$(COMPONENTS)/softdevice/common/softdevice_handler
-INC_PATHS += -I$(COMPONENTS)/softdevice/s130/headers
+INC_PATHS += -I$(COMPONENTS)/softdevice/s132/headers
+INC_PATHS += -I$(COMPONENTS)/softdevice/s132/headers/nrf52
 INC_PATHS += -I$(COMPONENTS)/toolchain
 INC_PATHS += -I$(COMPONENTS)/toolchain/arm
 INC_PATHS += -I$(COMPONENTS)/toolchain/gcc
+#INC_PATHS += -I$(COMPONENTS)/toolchain/CMSIS/Include
 INC_PATHS += -I$(COMPONENTS)/drivers_nrf/pstorage
 INC_PATHS += -I$(COMPONENTS)/drivers_nrf/hal
+INC_PATHS += -I$(COMPONENTS)/drivers_nrf/delay
 
 OBJECT_DIRECTORY = _build
 LISTING_DIRECTORY = $(OBJECT_DIRECTORY)
@@ -141,7 +144,7 @@ else
   DEBUG_FLAGS += -D NDEBUG -O3
 endif
 
-CFLAGS += -mcpu=cortex-m0
+CFLAGS += -mcpu=cortex-m4
 CFLAGS += -mthumb 
 CFLAGS += -Og
 CFLAGS += -fmessage-length=0
@@ -155,7 +158,8 @@ CFLAGS += -g3
 CFLAGS += -DBLE_STACK_SUPPORT_REQD
 CFLAGS += $(DEBUG_FLAGS)
 CFLAGS += -D$(TARGET_BOARD)
-CFLAGS += -DNRF51
+CFLAGS += -DNRF52
+CFLAGS += -DS132
 CFLAGS += -D__need___va_list
 CFLAGS += -w
 CFLAGS += -fabi-version=0
@@ -167,7 +171,7 @@ CFLAGS += -fno-threadsafe-statics
 CFLAGS += -DENABLE_LOGGING
 CFLAGS += -DDEST_BOARD_ID=0
 
-LDFLAGS += -mcpu=cortex-m0
+LDFLAGS += -mcpu=cortex-m4
 LDFLAGS += -mthumb
 LDFLAGS += -Og
 LDFLAGS += -fmessage-length=0
@@ -177,6 +181,7 @@ LDFLAGS += -flto
 LDFLAGS += -fno-move-loop-invariants
 LDFLAGS += -Wextra
 LDFLAGS += -g3
+LDFLAGS += -L$(COMPONENTS)/toolchain/gcc
 LDFLAGS += -T$(LINKER_SCRIPT)
 LDFLAGS += -Xlinker 
 LDFLAGS += --gc-sections
@@ -184,7 +189,7 @@ LDFLAGS += -Wl,-Map,"_build/FruityMesh.map"
 LDFLAGS += --specs=nano.specs
 
 LIBS += -L$(EHAL_PATH)/ARM/src
-LIBS += -L$(EHAL_PATH)/ARM/Nordic/nRF51/CMSIS/Debug
+LIBS += -L$(EHAL_PATH)/ARM/Nordic/nRF52/CMSIS/Debug
 LIBS += -lCMSIS
 
 CPP_SOURCE_FILE_NAMES = $(notdir $(CPP_SOURCE_FILES))
@@ -223,7 +228,15 @@ debug : all
 release : all
 
 flash: all
-	$(JLINK) deploy/upload_fruitymesh.jlink
+	nrfjprog --erasepage 0x1f000-0x80000 -f nrf52
+	nrfjprog --program _build/FruityMesh.hex -f nrf52
+	nrfjprog --reset -f nrf52
+
+flash_softdevice:
+	@echo Flashing: s132_nrf52_1.0.0-3.alpha_softdevice.hex
+	nrfjprog --erasepage 0x0-0x1f000 -f nrf52
+	nrfjprog --program $(COMPONENTS)/softdevice/s132/hex/s132_nrf52_1.0.0-3.alpha_softdevice.hex -f nrf52
+	nrfjprog --reset -f nrf52
 
 # Create build directories
 $(BUILD_DIRECTORIES):
